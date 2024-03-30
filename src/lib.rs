@@ -1,5 +1,6 @@
 #![feature(path_file_prefix)]
 
+use csv::Reader;
 use regex::Regex;
 
 use std::{
@@ -26,7 +27,28 @@ impl From<csv::Error> for UnparsableFileError {
         UnparsableFileError { inner: value.to_string() }
     }
 }
-
+pub fn run_lfp(source : &str) -> Result<String, Box<dyn std::error::Error>> {
+    let re = Regex::new(r"(\d){3}").unwrap();
+    let mut rdr = csv::ReaderBuilder::new().delimiter(b',').flexible(true).from_path(source)?;
+    let headers_raw = rdr.records().next().unwrap()?;
+    let headers = headers_raw.into_iter().map(|col| {
+        match re.find(col) {
+            Some(mtch) => mtch.as_str(),
+            None => ""
+        }
+    }).collect::<Vec<_>>();
+    let mut body :Vec<Vec<String>> = vec![];
+    for (n, record) in rdr.records().skip(8).enumerate() {
+        let inner = record?;
+        let record_vec = inner.into_iter().map(|s|s.to_owned()).collect();
+        body.push(record_vec)
+    }
+    let output_filename = format!("{}.ascii",source.split_once(".").unwrap_or(("file","")).0);
+    let headlines = headers.len() - 1; // -1 porque se agrega una columna vacia donde están los tiempos
+    let filename = write_to_file(headers, body, headlines, &output_filename).unwrap();
+    Ok(filename)
+    }
+    
 
 
 pub fn run(source : &str, sync_delay : f32, ns_per_chn : f32, output_filename : String) -> Result<String, UnparsableFileError> {
