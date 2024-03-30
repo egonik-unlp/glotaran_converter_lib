@@ -1,6 +1,5 @@
 #![feature(path_file_prefix)]
 
-use csv::Reader;
 use regex::Regex;
 
 use std::{
@@ -38,9 +37,8 @@ pub fn run_lfp(source : &str) -> Result<String, Box<dyn std::error::Error>> {
         }
     }).collect::<Vec<_>>();
     let mut body :Vec<Vec<String>> = vec![];
-    for (n, record) in rdr.records().skip(8).enumerate() {
-        let inner = record?;
-        let record_vec = inner.into_iter().map(|s|s.to_owned()).collect();
+    for record in rdr.records().skip(8) {
+        let record_vec = record?.into_iter().map(|s|s.to_owned()).collect();
         body.push(record_vec)
     }
     let output_filename = format!("{}.ascii",source.split_once(".").unwrap_or(("file","")).0);
