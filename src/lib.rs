@@ -1,7 +1,6 @@
 #![feature(path_file_prefix)]
 
 use regex::Regex;
-
 use std::{
     error::Error,
     fs::OpenOptions,
@@ -26,6 +25,17 @@ impl From<csv::Error> for UnparsableFileError {
         UnparsableFileError { inner: value.to_string() }
     }
 }
+
+/// Takes in a Edinburgh Instrument LFP file and returns a glotaran compatible
+/// .ascii file in the `wavelength explicit` format
+/// ```
+/// use glotaran_converter_lib::run_lfp;
+/// let filename : &str = "example_lfp.txt"; // Valid EI file
+/// let new_filename = run_lfp(filename).expect("Error converting/reading file");
+/// let prefix_a = format!("{}",filename.split_once(".").unwrap().0);
+/// let prefix_b = format!("{}",new_filename.split_once(".").unwrap().0);
+/// assert_eq!(prefix_a, prefix_b);
+/// ```
 pub fn run_lfp(source : &str) -> Result<String, Box<dyn std::error::Error>> {
     let re = Regex::new(r"(\d){3}").unwrap();
     let mut rdr = csv::ReaderBuilder::new().delimiter(b',').flexible(true).from_path(source)?;
@@ -48,8 +58,20 @@ pub fn run_lfp(source : &str) -> Result<String, Box<dyn std::error::Error>> {
     }
     
 
-
-pub fn run(source : &str, sync_delay : f32, ns_per_chn : f32, output_filename : String) -> Result<String, UnparsableFileError> {
+/// Takes in a Horiba DataStation text file (generated in datastation software, copying all traces to clipboard) and returns a glotaran compatible
+/// .ascii file in the `wavelength explicit` format
+/// ```
+/// use glotaran_converter_lib::run_das6;
+/// let filename : &str = "example_trp.txt"; // Valid DataStation file
+/// let output_filename : String = "example_trp.ascii".to_owned();
+/// let sync_delay : f32 = 0f32;
+/// let ns_per_chn : f32 = 2.5e4;
+/// let new_filename = run_das6(filename, sync_delay, ns_per_chn,output_filename).expect("Error converting/reading file");
+/// let prefix_a = format!("{}",filename.split_once(".").unwrap().0);
+/// let prefix_b = format!("{}",new_filename.split_once(".").unwrap().0);
+/// assert_eq!(prefix_a, prefix_b);
+/// ```
+pub fn run_das6(source : &str, sync_delay : f32, ns_per_chn : f32, output_filename : String) -> Result<String, UnparsableFileError> {
     let mut rdr = csv::ReaderBuilder::new()
         .delimiter(b'\t')
         .from_path(source)
