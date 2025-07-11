@@ -1,5 +1,6 @@
 // #![feature(path_file_prefix)]
 
+use anyhow::Context;
 use regex::Regex;
 use std::{error::Error, fmt::Display, fs::OpenOptions, io::Write};
 #[derive(Debug, Clone)]
@@ -31,12 +32,13 @@ impl From<csv::Error> for UnparsableFileError {
 /// let prefix_b = format!("{}",new_filename.split_once(".").unwrap().0);
 /// assert_eq!(prefix_a, prefix_b);
 /// ```
-pub fn run_lfp(source: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn run_lfp(source: &str) -> anyhow::Result<String> {
     let re = Regex::new(r"(\d){3}").unwrap();
     let mut rdr = csv::ReaderBuilder::new()
         .delimiter(b',')
         .flexible(true)
-        .from_path(source)?;
+        .from_path(source)
+        .context("Source file could not be read")?;
     let headers_raw = rdr.records().next().unwrap()?;
     let headers = headers_raw
         .into_iter()
@@ -52,8 +54,9 @@ pub fn run_lfp(source: &str) -> Result<String, Box<dyn std::error::Error>> {
     }
     let output_filename = format!("{}.ascii", source.split_once(".").unwrap_or(("file", "")).0);
     let headlines = headers.len() - 1; // -1 porque se agrega una columna vacia donde están los tiempos
-    let filename = write_to_file(headers, body, headlines, &output_filename).unwrap();
-    Ok(filename)
+    let filename = write_to_file(headers, body, headlines, &output_filename)
+        .context("Output file couldn't be written")?;
+    anyhow::Ok(filename)
 }
 
 /// Takes in a Horiba DataStation text file (generated in datastation software, copying all traces to clipboard) and returns a glotaran compatible
@@ -112,7 +115,7 @@ fn write_to_file(
     body: Vec<Vec<String>>,
     line_number: usize,
     output_filename: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> anyhow::Result<String> {
     let filename = output_filename;
     let mut file = OpenOptions::new()
         .append(true)
@@ -134,5 +137,5 @@ fn write_to_file(
     body.into_iter()
         .for_each(|v| writer.write_record(&v).unwrap());
     writer.flush()?;
-    Ok(filename.into())
+    anyhow::Ok(filename.into())
 }
