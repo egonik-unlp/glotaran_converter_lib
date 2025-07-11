@@ -1,6 +1,6 @@
 [package]
 name = "glotaran_converter_lib"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 repository = "https://github.com/egonik-unlp/glotaran_converter_lib"
 homepage = "https://github.com/egonik-unlp/glotaran_converter_lib"
@@ -13,4 +13,5 @@ license = "MIT"
 [dependencies]
 anyhow = "1.0.98"
 csv = "1.2.2"
+itertools = "0.14.0"
 regex = "1.9.5"
