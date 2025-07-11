@@ -1,8 +1,7 @@
-// #![feature(path_file_prefix)]
-
 use anyhow::Context;
+use itertools::Itertools;
 use regex::Regex;
-use std::{error::Error, fmt::Display, fs::OpenOptions, io::Write};
+use std::{error::Error, fmt::Display, fs::OpenOptions, io::Write, ops::Index};
 #[derive(Debug, Clone)]
 pub struct UnparsableFileError {
     inner: String,
@@ -108,6 +107,55 @@ pub fn run_das6(
     let headlines = headers.len();
     let filename = write_to_file(headers, body, headlines, &output_filename).unwrap();
     Ok(filename)
+}
+pub fn run_r4(filename: String) -> anyhow::Result<String> {
+    let output_filename = {
+        let stub = filename.split_once(".").unwrap().0;
+        format!("{}.ascii", stub)
+    };
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(filename)
+        .context("Couldn't open lfp file")?;
+    let mut document: Vec<_> = reader
+        .headers()
+        .context("Couldn't read headers")?
+        .iter()
+        .map(|record| vec![record.to_owned()])
+        .collect();
+    reader.into_records().for_each(|record| {
+        for (index, cell) in record.unwrap().iter().enumerate() {
+            document.get_mut(index).unwrap().push(cell.to_owned());
+        }
+    });
+    document.sort_by_key(|row| {
+        let key = row.first().unwrap();
+        key.parse::<i32>().expect("Couldn't parse wavelength")
+    });
+    let mut return_headers = vec![];
+    let col_length = return_headers.len();
+    let mut return_body = vec![];
+    for (col_num, column) in document.iter().enumerate() {
+        for (row_n, cell) in column.into_iter().enumerate() {
+            if row_n == 0 {
+                return_headers.push(cell.as_str());
+            } else if col_num == 0 {
+                return_body.push(vec![cell.to_owned()]);
+            }
+            return_body
+                .get_mut(row_n - 1)
+                .unwrap()
+                .push(cell.to_owned());
+        }
+    }
+    write_to_file(
+        return_headers,
+        return_body,
+        col_length,
+        output_filename.as_str(),
+    )
+    .context("Couldn't write to file")?;
+    return anyhow::Ok(output_filename);
 }
 
 fn write_to_file(
