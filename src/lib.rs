@@ -1,7 +1,6 @@
 use anyhow::Context;
-use itertools::Itertools;
 use regex::Regex;
-use std::{error::Error, fmt::Display, fs::OpenOptions, io::Write, ops::Index};
+use std::{error::Error, fmt::Display, fs::OpenOptions, io::Write, path::Path};
 #[derive(Debug, Clone)]
 pub struct UnparsableFileError {
     inner: String,
@@ -32,6 +31,12 @@ impl From<csv::Error> for UnparsableFileError {
 /// assert_eq!(prefix_a, prefix_b);
 /// ```
 pub fn run_lfp(source: &str) -> anyhow::Result<String> {
+    let output_filename = {
+        let path = Path::new(source);
+        let ext = path.with_extension("ascii");
+        let filename = ext.file_name();
+        filename.unwrap().to_str().unwrap().to_owned()
+    };
     let re = Regex::new(r"(\d){3}").unwrap();
     let mut rdr = csv::ReaderBuilder::new()
         .delimiter(b',')
@@ -51,11 +56,15 @@ pub fn run_lfp(source: &str) -> anyhow::Result<String> {
         let record_vec = record?.into_iter().map(|s| s.to_owned()).collect();
         body.push(record_vec)
     }
-    let output_filename = format!("{}.ascii", source.split_once(".").unwrap_or(("file", "")).0);
     let headlines = headers.len() - 1; // -1 porque se agrega una columna vacia donde están los tiempos
+    println!(
+        "LFP R4 Headers len directo = {} y como reportado {}",
+        headers.len(),
+        headlines
+    );
     let filename = write_to_file(headers, body, headlines, &output_filename)
         .context("Output file couldn't be written")?;
-    anyhow::Ok(filename)
+    return anyhow::Ok(filename);
 }
 
 /// Takes in a Horiba DataStation text file (generated in datastation software, copying all traces to clipboard) and returns a glotaran compatible
@@ -106,12 +115,15 @@ pub fn run_das6(
     headers.push("");
     let headlines = headers.len();
     let filename = write_to_file(headers, body, headlines, &output_filename).unwrap();
-    Ok(filename)
+    return Ok(filename);
 }
+
 pub fn run_r4(filename: String) -> anyhow::Result<String> {
     let output_filename = {
-        let stub = filename.split_once(".").unwrap().0;
-        format!("{}.ascii", stub)
+        let path = Path::new(&filename);
+        let ext = path.with_extension("ascii");
+        let filename = ext.file_name();
+        filename.unwrap().to_str().unwrap().to_owned()
     };
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -128,34 +140,52 @@ pub fn run_r4(filename: String) -> anyhow::Result<String> {
             document.get_mut(index).unwrap().push(cell.to_owned());
         }
     });
+    document = document
+        .into_iter()
+        .filter(|col| !col.first().unwrap().is_empty())
+        .collect::<Vec<_>>();
     document.sort_by_key(|row| {
-        let key = row.first().unwrap();
-        key.parse::<i32>().expect("Couldn't parse wavelength")
+        let key = {
+            let tmp = row.first().unwrap();
+            if tmp.eq("t") {
+                0
+            } else {
+                tmp.parse::<i32>().expect("Couldn't parse wavelength")
+            }
+        };
+        key
     });
     let mut return_headers = vec![];
     let col_length = return_headers.len();
+    println!(
+        "Longitud de headers {col_length} en el vector final, {}",
+        document.len()
+    );
     let mut return_body = vec![];
     for (col_num, column) in document.iter().enumerate() {
-        for (row_n, cell) in column.into_iter().enumerate() {
-            if row_n == 0 {
+        for (row_n, cell) in column.iter().enumerate() {
+            if row_n == 0 && col_num == 0 {
+                return_headers.push("   ");
+            } else if row_n == 0 {
                 return_headers.push(cell.as_str());
             } else if col_num == 0 {
                 return_body.push(vec![cell.to_owned()]);
+            } else {
+                return_body
+                    .get_mut(row_n - 1)
+                    .unwrap()
+                    .push(cell.to_owned());
             }
-            return_body
-                .get_mut(row_n - 1)
-                .unwrap()
-                .push(cell.to_owned());
         }
     }
-    write_to_file(
-        return_headers,
-        return_body,
-        col_length,
-        output_filename.as_str(),
-    )
-    .context("Couldn't write to file")?;
-    return anyhow::Ok(output_filename);
+    let col_length = return_headers.len();
+    println!(
+        "shadow of ... Longitud de headers {col_length} pasados a write to file, {}",
+        document.len()
+    );
+    write_to_file(return_headers, return_body, col_length, &output_filename)
+        .context("Couldn't write to file")?;
+    return anyhow::Ok(output_filename.to_owned());
 }
 
 fn write_to_file(
@@ -164,6 +194,7 @@ fn write_to_file(
     line_number: usize,
     output_filename: &str,
 ) -> anyhow::Result<String> {
+    println!("Contents converted written to file {output_filename}");
     let filename = output_filename;
     let mut file = OpenOptions::new()
         .append(true)
@@ -173,8 +204,14 @@ fn write_to_file(
     writeln!(file, "Eduardo Gonik")?;
     writeln!(file, "wavelength explicit")?;
     // file.write(format!("interval nr {}", (line_number - 1)).as_bytes())?;
+    println!(
+        "Line number = {} as written {}",
+        line_number,
+        line_number - 1
+    );
     let ii = format!("intervalnr {}", (line_number - 1));
     writeln!(file, "{ii}")?;
+    println!("ii = {}", ii);
     file.flush()?;
     let file2 = OpenOptions::new().append(true).open(filename)?;
     let mut writer = csv::WriterBuilder::new()
